@@ -51,15 +51,10 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# 3ds files
-*.smdh
 *.3dsx
-*.lst
-
-.vscode
-
+*.smdh
+.vscode/
 build/
-kernelhaxcode_3ds/build
 
 kernelhaxcode_3ds.bin
 arm11/arm11.bin
