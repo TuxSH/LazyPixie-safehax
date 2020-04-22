@@ -2,19 +2,11 @@
 #include <3ds.h>
 #include "MyThread.h"
 #include "kernelhaxcode_3ds_bin.h"
+#include "../kernelhaxcode_3ds/exploit_chain.h"
 
 #define IS_N3DS                 (*(vu32 *)0x1FF80030 >= 6) // APPMEMTYPE. Hacky but doesn't use APT
 
 #define TRY(expr)       if(R_FAILED(res = (expr))) return res;
-#define KERNVA2PA(a)    ((a) + (*(vu32 *)0x1FF80060 < SYSTEM_VERSION(2, 44, 6) ? 0xD0000000 : 0xC0000000))
-#define MAP_ADDR        0x80000000
-
-typedef struct BlobLayout {
-    u8 padding0[0x1000]; // to account for firmlaunch params in case we're placed at FCRAM+0
-    u8 code[0x20000];
-    u32 l2table[0x100];
-    u32 padding[0x400 - 0x100];
-} BlobLayout;
 
 void panic(Result res)
 {
@@ -79,21 +71,6 @@ static void receiver(void *p)
     svcCloseHandle(*sess);
 }
 
-static void prepareL2Table(BlobLayout *layout)
-{
-    u32 *l2table = layout->l2table;
-
-    // Map AXIWRAM RWX RWX Strongly ordered
-    for(u32 offset = 0; offset < 0x80000; offset += 0x1000) {
-        l2table[offset >> 12] = (0x1FF80000 + offset) | 0x432;
-    }
-
-    // Map the code buffer cacheable
-    for(u32 offset = 0; offset < sizeof(layout->code); offset += 0x1000) {
-        l2table[(0x80000 + offset) >> 12] = (osConvertVirtToPhys(layout->code) + offset) | 0x5B6;
-    }
-}
-
 static Result doExploit(void)
 {
     Handle client, server;
@@ -112,7 +89,7 @@ static Result doExploit(void)
     }
 
     memcpy(layout->code, kernelhaxcode_3ds_bin, kernelhaxcode_3ds_bin_size);
-    prepareL2Table(layout);
+    khc3dsPrepareL2Table(layout);
 
     TRY(svcCreateSession(&server, &client));
 
@@ -133,10 +110,7 @@ static Result doExploit(void)
 
     svcCloseHandle(client);
 
-    __dsb();
-
-    u64 firmlaunchTidMask = IS_N3DS ? 0x0004013820000000ULL : 0x0004013800000000ULL; 
-    return ((Result (*)(u64))(MAP_ADDR + 0x80000))(firmlaunchTidMask | 0x00000003ull);
+    return khc3dsRunExploitChain(layout);
 }
 
 int main(int argc, char* argv[])
